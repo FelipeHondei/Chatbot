@@ -241,53 +241,6 @@ def debug():
         "port": os.environ.get('PORT', '5000'),
         "environment_vars": list(os.environ.keys())
     })
-
-@app.route('/api/chat', methods=['POST'])
-def chat():
-    """
-    Endpoint para processar mensagens do usuário
-    """
-    if not chatbot:
-        return jsonify({"error": "Chatbot não inicializado corretamente"}), 500
-    
-    data = request.json
-    if not data or 'message' not in data:
-        return jsonify({"error": "Formato de requisição inválido. Envie um JSON com o campo 'message'"}), 400
-    
-    user_message = data['message']
-    
-    # Verifica se é um comando especial
-    if user_message.startswith('/salvar'):
-        # Exemplo: /salvar categoria:chave:valor
-        parts = user_message.split(':')
-        if len(parts) >= 3:
-            categoria = parts[0].replace('/salvar', '').strip()
-            chave = parts[1].strip()
-            valor = ':'.join(parts[2:]).strip()
-            
-            success = chatbot.db.save_knowledge(categoria, chave, valor)
-            if success:
-                return jsonify({"response": f"Conhecimento salvo: {categoria}:{chave}"})
-            else:
-                return jsonify({"response": "Erro ao salvar conhecimento"})
-    
-    if user_message.startswith('/recuperar'):
-        # Exemplo: /recuperar categoria:chave
-        parts = user_message.split(':')
-        if len(parts) == 2:
-            categoria = parts[0].replace('/recuperar', '').strip()
-            chave = parts[1].strip()
-            
-            valor = chatbot.db.get_knowledge(categoria, chave)
-            if valor:
-                return jsonify({"response": f"Valor recuperado: {valor}"})
-            else:
-                return jsonify({"response": "Conhecimento não encontrado"})
-    
-    # Processa mensagem normal
-    response = chatbot.process_message(user_message)
-    return jsonify({"response": response})
-
 @app.route('/api/history', methods=['GET'])
 def get_history():
     """
@@ -344,7 +297,6 @@ def initialize_chatbot():
         traceback.print_exc()
         return None
     
-    logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 @app.route('/api/chat', methods=['POST'])
@@ -372,6 +324,29 @@ def chat():
         user_message = data['message']
         logger.info(f"Processando mensagem: {user_message}")
         
+        # Verifica comandos especiais
+        if user_message.startswith('/salvar'):
+            parts = user_message.split(':')
+            if len(parts) >= 3:
+                categoria = parts[0].replace('/salvar', '').strip()
+                chave = parts[1].strip()
+                valor = ':'.join(parts[2:]).strip()
+                success = chatbot.db.save_knowledge(categoria, chave, valor)
+                if success:
+                    return jsonify({"response": f"Conhecimento salvo: {categoria}:{chave}"})
+                else:
+                    return jsonify({"response": "Erro ao salvar conhecimento"})
+        if user_message.startswith('/recuperar'):
+            parts = user_message.split(':')
+            if len(parts) == 2:
+                categoria = parts[0].replace('/recuperar', '').strip()
+                chave = parts[1].strip()
+                valor = chatbot.db.get_knowledge(categoria, chave)
+                if valor:
+                    return jsonify({"response": f"Valor recuperado: {valor}"})
+                else:
+                    return jsonify({"response": "Conhecimento não encontrado"})
+        
         response = chatbot.process_message(user_message)
         logger.info(f"Resposta gerada: {response}")
         
@@ -383,8 +358,6 @@ def chat():
             "error": str(e),
             "type": type(e).__name__
         }), 500
-
-chatbot = initialize_chatbot()
 
 @app.errorhandler(Exception)
 def handle_error(e):
