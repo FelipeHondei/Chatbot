@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: chatbot-laponia-api
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --bind 0.0.0.0:$PORT api:app
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.9.18
+      - key: GROQ_API_KEY
+        sync: false  # Você precisará definir isso manualmente no dashboard
