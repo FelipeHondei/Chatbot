@@ -6,6 +6,7 @@ from groq import Groq
 from datetime import datetime
 from flask_cors import CORS
 import threading
+import logging
 
 # Carrega variáveis de ambiente
 load_dotenv()
@@ -228,6 +229,18 @@ def home():
         "status": "healthy",
         "chatbot_initialized": chatbot is not None
     })
+@app.route('/api/debug', methods=['GET'])
+def debug():
+    """
+    Endpoint de debug para verificar configurações
+    """
+    return jsonify({
+        "groq_api_key_configured": bool(os.getenv("GROQ_API_KEY")),
+        "chatbot_initialized": chatbot is not None,
+        "python_version": os.environ.get('PYTHON_VERSION', 'not set'),
+        "port": os.environ.get('PORT', '5000'),
+        "environment_vars": list(os.environ.keys())
+    })
 
 @app.route('/api/chat', methods=['POST'])
 def chat():
@@ -304,6 +317,74 @@ def health_check():
         "chatbot_initialized": chatbot is not None,
         "timestamp": datetime.now().isoformat()
     })
+def initialize_chatbot():
+    """
+    Função para inicializar o chatbot com melhor tratamento de erros
+    """
+    try:
+        groq_api_key = os.getenv("GROQ_API_KEY")
+        
+        if not groq_api_key:
+            print("ERRO: GROQ_API_KEY não encontrada nas variáveis de ambiente")
+            print("Variáveis disponíveis:", list(os.environ.keys()))
+            return None
+            
+        if groq_api_key.strip() == "":
+            print("ERRO: GROQ_API_KEY está vazia")
+            return None
+            
+        print(f"Inicializando chatbot com API key: {groq_api_key[:8]}...")
+        chatbot = Chatbot(groq_api_key)
+        print("Chatbot inicializado com sucesso!")
+        return chatbot
+        
+    except Exception as e:
+        print(f"Erro detalhado ao inicializar chatbot: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+    
+    logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+@app.route('/api/chat', methods=['POST'])
+def chat():
+    """
+    Endpoint para processar mensagens do usuário com logs melhorados
+    """
+    logger.info(f"Recebida requisição de chat: {request.json}")
+    
+    if not chatbot:
+        logger.error("Chatbot não inicializado")
+        return jsonify({
+            "error": "Chatbot não inicializado corretamente",
+            "details": "Verifique se a GROQ_API_KEY está configurada"
+        }), 500
+    
+    try:
+        data = request.json
+        if not data or 'message' not in data:
+            return jsonify({
+                "error": "Formato de requisição inválido",
+                "expected": {"message": "sua mensagem aqui"}
+            }), 400
+        
+        user_message = data['message']
+        logger.info(f"Processando mensagem: {user_message}")
+        
+        response = chatbot.process_message(user_message)
+        logger.info(f"Resposta gerada: {response}")
+        
+        return jsonify({"response": response})
+        
+    except Exception as e:
+        logger.error(f"Erro no chat: {e}")
+        return jsonify({
+            "error": str(e),
+            "type": type(e).__name__
+        }), 500
+
+chatbot = initialize_chatbot()
 
 @app.errorhandler(Exception)
 def handle_error(e):
@@ -315,4 +396,10 @@ def handle_error(e):
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=False)
+    debug_mode = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
+    
+    print(f"Iniciando aplicação na porta {port}")
+    print(f"Debug mode: {debug_mode}")
+    print(f"Chatbot inicializado: {chatbot is not None}")
+    
+    app.run(host='0.0.0.0', port=port, debug=debug_mode)
